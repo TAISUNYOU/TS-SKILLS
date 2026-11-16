@@ -28,9 +28,8 @@ procedure( ts_PwrIsland( @key (tmpLib "tmpLib") )
 
     ;; ---- 점검 ----
     ok = t
-    foreach( fn '(geGetEditCellView leMarkNet leSaveMarkNet dbOpenCellViewByType
-                  dbClose ddGetObj ts_MarkAt ts_SaveMark ts_DeleteCell
-                  ts_UnmarkAll ts_InIsland)
+    ;; Cadence 함수는 문서로 확인됨. ts_TxtDelByConn.il 유틸만 점검
+    foreach( fn '(ts_MarkAt ts_SaveMark ts_DeleteCell ts_UnmarkAll ts_InIsland)
       unless( isCallable(fn)
         printf("[ERROR] 함수 없음: %L\n" fn)
         ok = nil

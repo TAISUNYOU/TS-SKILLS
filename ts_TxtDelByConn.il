@@ -29,8 +29,6 @@ procedure(ts_TxtDelByConn(@key (dryRun t) (tmpLib "tmpLib"))
     cv = geGetEditCellView()
     unless(cv
       error("ts_TxtDelByConn: 편집 중인 layout 셀뷰가 없습니다"))
-    unless(isCallable('leMarkNet) && isCallable('leSaveMarkNet)
-      error("ts_TxtDelByConn: 이 Virtuoso 버전에는 leMarkNet/leSaveMarkNet이 없습니다"))
     unless(ddGetObj(tmpLib)
       error("ts_TxtDelByConn: %s 라이브러리가 없습니다" tmpLib))
     when(!dryRun && cv~>mode == "r"
@@ -129,7 +127,7 @@ procedure(ts_TxtDelByConn(@key (dryRun t) (tmpLib "tmpLib"))
 
     if(dryRun then
       geDeselectAll()
-      foreach(l delList geSelectFig(l))
+      geSelectFigs(delList)
       printf("dry-run: 삭제 대상을 선택해 두었습니다. 삭제하려면 ?dryRun nil\n")
      else
       foreach(l delList
@@ -177,7 +175,4 @@ procedure(ts_DeleteCell(lib cell)
 
 ;; Mark Net 하이라이트 전체 해제 (에러 나도 무시)
 procedure(ts_UnmarkAll()
-  cond(
-    (isCallable('leUnmarkNet)      errset(leUnmarkNet()))
-    (isCallable('leHiUnmarkNetAll) errset(leHiUnmarkNetAll()))
-    (t nil)))
+  errset(leUnmarkNet()))

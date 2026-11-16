@@ -37,13 +37,6 @@ procedure( ts_M2GuideCopy( tplLib tplCell dir @key (dryRun t) )
 
     ;; ---- 점검 ----
     ok = t
-    foreach( fn '(geGetEditCellView dbOpenCellViewByType dbCopyFig
-                  dbFindNetByName dbAddFigToNet dbClose upperCase)
-      unless( isCallable(fn)
-        printf("[ERROR] 함수 없음: %L\n" fn)
-        ok = nil
-      )
-    )
     when( ok
       d = when( stringp(dir) upperCase(dir) )
       unless( member(d '("X" "Y"))

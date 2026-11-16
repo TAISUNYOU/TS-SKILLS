@@ -177,18 +177,11 @@ procedure( ts_ParamKeyVals( inst keyUp )
 )
 
 ;; ---------------------------------------------------------------------
-;; 유틸: 실행 전 점검 (함수 존재 / 셀뷰 / 읽기 전용)
+;; 유틸: 실행 전 점검 (셀뷰 / 읽기 전용)
 ;; ---------------------------------------------------------------------
 procedure( ts_ParamCheckEnv( needWrite )
   let( (ok res cv)
     ok = t
-    foreach( fn '(geGetEditCellView geGetSelSet hiGetCurrentWindow cdfGetInstCDF
-                  cdfSyncInstParamValue geSelectFig geDeselectAll upperCase)
-      unless( isCallable(fn)
-        printf("[ERROR] 함수 없음: %L\n" fn)
-        ok = nil
-      )
-    )
     when( ok
       res = errset( geGetEditCellView() )
       cv = if( res car(res) nil )
