@@ -37,12 +37,10 @@ procedure( ts_M2GuideCopy( tplLib tplCell dir @key (dryRun t) )
 
     ;; ---- 점검 ----
     ok = t
-    when( ok
-      d = when( stringp(dir) upperCase(dir) )
-      unless( member(d '("X" "Y"))
-        printf("[ERROR] dir는 \"X\" 또는 \"Y\" (입력: %L)\n" dir)
-        ok = nil
-      )
+    d = when( stringp(dir) upperCase(dir) )
+    unless( member(d '("X" "Y"))
+      printf("[ERROR] dir는 \"X\" 또는 \"Y\" (입력: %L)\n" dir)
+      ok = nil
     )
     when( ok
       res = errset( geGetEditCellView() )

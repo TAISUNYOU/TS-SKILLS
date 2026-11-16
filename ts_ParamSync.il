@@ -182,17 +182,15 @@ procedure( ts_ParamKeyVals( inst keyUp )
 procedure( ts_ParamCheckEnv( needWrite )
   let( (ok res cv)
     ok = t
-    when( ok
-      res = errset( geGetEditCellView() )
-      cv = if( res car(res) nil )
-      cond(
-        ( !cv
-          printf("[ERROR] 편집 중인 셀뷰 없음\n")
-          ok = nil )
-        ( needWrite && cv~>mode == "r"
-          printf("[ERROR] %s/%s 읽기 전용. 편집 모드로 연 뒤 실행\n" cv~>libName cv~>cellName)
-          ok = nil )
-      )
+    res = errset( geGetEditCellView() )
+    cv = if( res car(res) nil )
+    cond(
+      ( !cv
+        printf("[ERROR] 편집 중인 셀뷰 없음\n")
+        ok = nil )
+      ( needWrite && cv~>mode == "r"
+        printf("[ERROR] %s/%s 읽기 전용. 편집 모드로 연 뒤 실행\n" cv~>libName cv~>cellName)
+        ok = nil )
     )
     if( ok cv nil )
   )

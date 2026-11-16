@@ -28,22 +28,11 @@ procedure( ts_PwrIsland( @key (tmpLib "tmpLib") )
 
     ;; ---- 점검 ----
     ok = t
-    ;; Cadence 함수는 문서로 확인됨. ts_TxtDelByConn.il 유틸만 점검
-    foreach( fn '(ts_MarkAt ts_SaveMark ts_DeleteCell ts_UnmarkAll ts_InIsland)
-      unless( isCallable(fn)
-        printf("[ERROR] 함수 없음: %L\n" fn)
-        ok = nil
-      )
-    )
-    unless( isCallable('ts_InIsland)
-      printf("        -> ts_TxtDelByConn.il 을 먼저 load 하세요\n"))
-    when( ok
-      res = errset( geGetEditCellView() )
-      cv = when( res car(res) )
-      unless( cv
-        printf("[ERROR] 편집 중인 layout 셀뷰 없음\n")
-        ok = nil
-      )
+    res = errset( geGetEditCellView() )
+    cv = when( res car(res) )
+    unless( cv
+      printf("[ERROR] 편집 중인 layout 셀뷰 없음\n")
+      ok = nil
     )
     when( ok && !ddGetObj(tmpLib)
       printf("[ERROR] %s 라이브러리 없음\n" tmpLib)
