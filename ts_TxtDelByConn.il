@@ -129,7 +129,7 @@ procedure(ts_TxtDelByConn(@key (dryRun t) (tmpLib "tmpLib"))
 
     if(dryRun then
       geDeselectAll()
-      geSelectFigs(delList)
+      foreach(l delList geSelectFig(l))
       printf("dry-run: 삭제 대상을 선택해 두었습니다. 삭제하려면 ?dryRun nil\n")
      else
       foreach(l delList
