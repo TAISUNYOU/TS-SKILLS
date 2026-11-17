@@ -10,24 +10,32 @@
 ;;      ts_ViaRepeat(?dryRun nil)    ; 실제 생성
 ;;      ts_ViaRepeatClear()          ; dry-run 하이라이트 지우기
 ;;   옵션: ?absorbRef nil  기준 via는 그대로 두고 나머지만 박음
+;;         ?depth 3        MOS를 찾을 하위 계층 깊이
 ;;         ?viaCell "VM1C" ?m0Layer "M0" ?m1Layer "M1" ?terms '("D" "S")
 ;;
 ;; 동작
-;;   - 기준 via 중심을 덮는 MOS instance를 찾고, PCell 안의
-;;     terminal "D"/"S"의 M0 pin으로 finger 위치와 역할을 판단
+;;   - 기준 via 중심점에서 계층을 따라 내려가며 MOS를 찾음
+;;     (현재 셀뷰 또는 ?depth 단계 아래까지, transform 누적)
+;;     MOS 판정: PCell이고 terminal "D"/"S"에 M0 pin이 있음
+;;     (중간 셀에 D/S pin이 있어도 PCell이 아니면 MOS로 안 봄)
+;;   - MOS의 D/S M0 pin으로 finger 위치와 역할을 판단
 ;;     (pin이 strip 끝에 작게 있어도 finger 방향 좌표만 쓰므로 무관)
+;;   - via는 현재 셀뷰 최상위에 생성, M1 파워라인도 최상위만 봄
 ;;   - 기준 via를 같은 역할 finger 위치로 평행이동한 자리 중
 ;;     아래를 모두 만족하는 곳만 박음
 ;;       a) 그 자리에 MOS 내부 M0가 있음
 ;;       b) 기준 via와 같은 M1 shape(파워라인) 위
 ;;       c) VM1C(instance/mosaic)가 아직 없음
-;;   - 등간격으로 이어진 구간마다 mosaic 1개 (1개짜리 구간은 instance)
+;;   - 등간격으로 이어진 구간마다 mosaic 1개 (1개짜리 구간은 dbCopyFig)
+;;     VM1C PCell: 기준 via 파라미터로 mosaic 생성 후, master가 기준 via와
+;;     같은 submaster인지(= 파라미터 동일) 확인. 다르면 지우고 [ERROR]
 ;;   - ?absorbRef t(기본): 기준 via도 mosaic에 포함하고 원래 것은 삭제
 ;;     (기준 via 때문에 mosaic이 둘로 끊기지 않게). 생성 실패가 하나라도
 ;;     있으면 기준 via는 지우지 않음
 ;;
 ;; 주의
 ;;   - mosaic 안의 via 하나만 지우려면 flatten 필요
+;;   - 탐색 경로 중간의 mosaic(instance array) 내부는 탐색 안 함 ([WARN])
 ;; =====================================================================
 
 unless( boundp('tsViaRepeatHl) tsViaRepeatHl = nil )
@@ -35,9 +43,9 @@ unless( boundp('tsViaRepeatHl) tsViaRepeatHl = nil )
 ;; ---------------------------------------------------------------------
 ;; 메인
 ;; ---------------------------------------------------------------------
-procedure( ts_ViaRepeat( @key (dryRun t) (absorbRef t) (viaCell "VM1C")
+procedure( ts_ViaRepeat( @key (dryRun t) (absorbRef t) (depth 3) (viaCell "VM1C")
                               (m0Layer "M0") (m1Layer "M1") (terms '("D" "S")) )
-  let( (ok cv res sel ref bb c0 viaW viaH offX offY g eps mos match
+  let( (ok cv res sel ref bb c0 viaW viaH offX offY g eps found mos mosXf mosPath match
         axisX role refC roleCs m0Boxes m1Ref existing o c
         targets pitch runs cur n rows cols rowSp colSp obj newObjs hl
         (nExist 0) (nNoM0 0) (nNoM1 0) (nErr 0))
@@ -77,31 +85,33 @@ procedure( ts_ViaRepeat( @key (dryRun t) (absorbRef t) (viaCell "VM1C")
       g   = if( res && car(res) car(res) 0.001 )
       eps = g / 2.0
 
-      ;; ---- 기준 via 아래 MOS 찾기 (D/S pin으로 역할 판단되는 첫 instance) ----
-      foreach( inst cv~>instances
-        when( !mos && inst~>objType == "inst" && inst~>cellName != viaCell
-              && ts_VRInBox(c0 inst~>bBox eps)
-          match = car( errset( ts_VRMatch(inst c0 terms m0Layer) ) )
-          when( match mos = inst )
-        )
-      )
-      unless( mos
-        printf("[ERROR] 기준 via 아래에서 %L %s pin으로 역할을 판단할 MOS를 못 찾음\n"
-               terms m0Layer)
+      ;; ---- 기준 via 아래 MOS 찾기 (계층 탐색) ----
+      res = errset( ts_VRFindMos( cv list( list(0 0) "R0" 1.0 ) c0 terms m0Layer
+                                  viaCell depth nil eps ) )
+      found = when( res car(res) )
+      unless( res
+        printf("[ERROR] MOS 계층 탐색 중 에러\n") )
+      unless( found
+        printf("[ERROR] 기준 via 아래 %d단계 안에서 %L %s pin으로 역할을 판단할 MOS PCell을 못 찾음\n"
+               depth terms m0Layer)
         ok = nil
       )
     )
 
     when( ok
+      mos     = nth(0 found)
+      mosXf   = nth(1 found)
+      match   = nth(2 found)
+      mosPath = nth(3 found)
       axisX  = nth(0 match)
       role   = nth(1 match)
       refC   = nth(2 match)
       roleCs = nth(3 match)
-      m0Boxes = ts_VRShapes( mos~>master mos~>transform m0Layer 5 )
+      m0Boxes = ts_VRShapes( mos~>master mosXf m0Layer 5 )
       m1Ref   = dbGetTrueOverlaps( cv list(c0 c0) list(m1Layer) )
       cond(
         ( !exists( b m0Boxes ts_VRInBox(c0 b eps) )
-          printf("[ERROR] %s 안에서 기준 via 위치의 %s를 못 찾음\n" mos~>name m0Layer)
+          printf("[ERROR] %s 안에서 기준 via 위치의 %s를 못 찾음\n" mosPath m0Layer)
           ok = nil )
         ( !m1Ref
           printf("[ERROR] 기준 via 중심 %L에 최상위 %s shape 없음\n" c0 m1Layer)
@@ -147,7 +157,7 @@ procedure( ts_ViaRepeat( @key (dryRun t) (absorbRef t) (viaCell "VM1C")
 
       ;; ---- 출력 ----
       printf("[REF] %s @ %L / MOS %s (%s) / 역할 %s / finger 방향 %s\n"
-             ref~>name ref~>xy mos~>name mos~>cellName role if( axisX "X" "Y" ))
+             ref~>name ref~>xy mosPath mos~>cellName role if( axisX "X" "Y" ))
       printf("[INFO] %s finger %d개: 박을 곳 %d / 이미 via %d / M0 없음 %d / M1 밖 %d\n"
              role length(roleCs) length(targets) nExist nNoM0 nNoM1)
       foreach( run runs
@@ -227,14 +237,49 @@ procedure( ts_ViaRepeatClear()
 ;; ---------------------------------------------------------------------
 ;; 유틸
 ;; ---------------------------------------------------------------------
-;; MOS instance의 D/S pin으로 역할 판단
+;; master 안에서 c0(최상위 좌표)를 덮는 instance를 따라 내려가며 MOS 찾기
+;;   xf   : master 좌표 -> 최상위 좌표 transform
+;;   depth: 더 내려갈 수 있는 단계 수
+;; => list( mosInst mosXf match "I0/I3/M5" ) / 못 찾으면 nil
+procedure( ts_VRFindMos( master xf c0 terms m0Layer viaCell depth path eps )
+  let( (found ixf p match)
+    foreach( inst master~>instances
+      when( !found && inst~>objType == "inst" && inst~>cellName != viaCell
+            && ts_VRInBox( c0 dbTransformBBox( inst~>bBox xf ) eps )
+        ixf = dbConcatTransform( inst~>transform xf )
+        p   = if( path strcat( path "/" inst~>name ) inst~>name )
+        if( inst~>master~>superMaster then
+          ;; PCell: MOS인지 확인만 하고 안으로는 안 들어감
+          match = car( errset( ts_VRMatch( inst ixf c0 terms m0Layer ) ) )
+          when( match found = list( inst ixf match p ) )
+        else
+          when( depth > 0
+            found = ts_VRFindMos( inst~>master ixf c0 terms m0Layer viaCell
+                                  depth - 1 p eps )
+          )
+        )
+      )
+    )
+    unless( found
+      foreach( m master~>mosaics
+        when( car( errset( ts_VRInBox( c0 dbTransformBBox( m~>bBox xf ) eps ) ) )
+          printf("[WARN] %s 안 mosaic %L이 기준 via를 덮음 - mosaic 내부는 탐색 안 함\n"
+                 or( path "(top)" ) m~>name)
+        )
+      )
+    )
+    found
+  )
+)
+
+;; MOS instance의 D/S pin으로 역할 판단 (ixf: MOS 좌표 -> 최상위 좌표)
 ;; => list( axisX role refC roleCs ) / 판단 못 하면 nil
 ;;    axisX : finger가 X 방향으로 늘어서 있으면 t
 ;;    refC  : 기준 via finger의 finger 방향 좌표
 ;;    roleCs: 같은 역할 finger들의 finger 방향 좌표 (중복 제거, 오름차순)
-procedure( ts_VRMatch( inst c0 terms m0Layer )
+procedure( ts_VRMatch( inst ixf c0 terms m0Layer )
   let( (pins xs ys axisX fp best bd dd role)
-    pins = ts_VRPins( inst terms m0Layer )
+    pins = ts_VRPins( inst ixf terms m0Layer )
     when( pins
       xs = foreach( mapcar p pins xCoord(cadr(p)) )
       ys = foreach( mapcar p pins yCoord(cadr(p)) )
@@ -259,7 +304,7 @@ procedure( ts_VRMatch( inst c0 terms m0Layer )
 )
 
 ;; PCell master의 terms pin 중 m0Layer인 것 => list( (termName 중심점) ... ) 최상위 좌표
-procedure( ts_VRPins( inst terms m0Layer )
+procedure( ts_VRPins( inst ixf terms m0Layer )
   let( (out fig)
     foreach( term inst~>master~>terminals
       when( member( term~>name terms )
@@ -267,7 +312,7 @@ procedure( ts_VRPins( inst terms m0Layer )
           fig = pin~>fig
           when( fig && fig~>layerName == m0Layer
             out = cons( list( term~>name
-                              ts_VRCenter( dbTransformBBox( fig~>bBox inst~>transform ) ) )
+                              ts_VRCenter( dbTransformBBox( fig~>bBox ixf ) ) )
                         out )
           )
         )
@@ -320,24 +365,51 @@ procedure( ts_VRViaOrigins( cv viaCell skip )
   )
 )
 
-;; 기준 via와 같은 master/방향으로 instance(1개) 또는 mosaic 생성
+;; 기준 via와 같은 via를 xy(origin)에 생성
+;;   1개   : dbCopyFig (파라미터 그대로 복사)
+;;   여러 개: mosaic. PCell이면 기준 파라미터로 만들고, master가 기준과
+;;           같은 submaster인지 확인 (다르면 지우고 nil)
 procedure( ts_VRCreate( cv ref xy rows cols rowSp colSp )
-  let( (master sm params)
-    master = ref~>master
-    sm = master~>superMaster
-    if( sm then
-      ;; PCell via: superMaster + 기준 instance 파라미터
-      params = foreach( mapcar p ref~>prop list( p~>name p~>valueType p~>value ) )
-      if( rows * cols == 1 then
-        dbCreateParamInst( cv sm nil xy ref~>orient 1 params )
-      else
-        dbCreateParamSimpleMosaic( cv sm nil xy ref~>orient rows cols rowSp colSp params )
-      )
+  let( (sm params obj)
+    if( rows * cols == 1 then
+      dbCopyFig( ref cv list( list( xCoord(xy) - xCoord(ref~>xy)
+                                    yCoord(xy) - yCoord(ref~>xy) )
+                              "R0" 1.0 ) )
     else
-      if( rows * cols == 1 then
-        dbCreateInst( cv master nil xy ref~>orient )
-      else
-        dbCreateSimpleMosaic( cv master nil xy ref~>orient rows cols rowSp colSp )
+      sm = ref~>master~>superMaster
+      when( sm
+        params = foreach( mapcar p ref~>prop list( p~>name p~>valueType p~>value ) )
+        obj = car( errset( dbCreateParamSimpleMosaic( cv sm nil xy ref~>orient
+                             rows cols rowSp colSp params ) ) )
+        obj = ts_VRVerify( obj ref )
+      )
+      unless( obj
+        obj = car( errset( dbCreateSimpleMosaic( cv ref~>master nil xy ref~>orient
+                             rows cols rowSp colSp ) ) )
+        obj = ts_VRVerify( obj ref )
+      )
+      obj
+    )
+  )
+)
+
+;; 생성한 mosaic의 master가 기준 via master와 같은지 확인
+;; 다르면 지우고 nil, 확인 못 하면 [WARN] 후 그대로 둠
+procedure( ts_VRVerify( obj ref )
+  let( (m)
+    when( obj
+      m = or( car( errset( obj~>master ) )
+              car( errset( car( obj~>instanceList )~>master ) ) )
+      cond(
+        ( !m
+          printf("[WARN] mosaic master 확인 불가 - 파라미터 눈으로 확인 필요\n")
+          obj )
+        ( eq( m ref~>master )
+          obj )
+        ( t
+          printf("[WARN] mosaic 파라미터가 기준 via와 달라 삭제\n")
+          dbDeleteObject(obj)
+          nil )
       )
     )
   )
